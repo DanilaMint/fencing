@@ -35,7 +35,7 @@ impl Fighter {
     }
 
     pub fn facing(&self) -> f32 {
-        self.facing
+        self.facing + 90.0f32.to_radians()
     }
 
     pub fn velocity(&self) -> Vec2 {
@@ -69,7 +69,7 @@ impl Fighter {
         // Положение рукояти в локальной системе координат
         let hilt_local = SWORD_POS + self.sword.local_sword_position();
         // Направление клинка в мировой системе координат
-        let blade = Vec2::from_angle(self.sword.angle() + self.facing + 90.0f32.to_radians());
+        let blade = Vec2::from_angle(self.sword.angle() + self.facing());
 
         self.velocity
             // Поворот бойца вместе с мечом
@@ -107,7 +107,7 @@ mod tests {
         fighter::{
             FIST_POS, HEAD_POS, SWORD_POS,
             brain::Doll,
-            sword::{Sword, SWORD_LENGTH},
+            sword::{SWORD_LENGTH, Sword},
         },
         math::SPT,
     };

@@ -1,4 +1,5 @@
 pub use core::f32::consts::*;
+use glam::Vec2;
 
 /// Квадратный корень числа, подходит для констант
 pub const fn sqrt_const(x: f32) -> f32 {
@@ -63,6 +64,16 @@ pub const fn normalize_angle(mut x: f32) -> f32 {
     x %= TAU;
 
     if x > PI { x - TAU } else { x }
+}
+
+/// Складывает векторы и сокращает длину
+pub fn add_vector_with_min(v1: Vec2, v2: Vec2, len: f32) -> Vec2 {
+    let new_vec = v1 + v2;
+    new_vec.normalize_or_zero() * new_vec.length().min(len)
+}
+
+pub fn shorten_vector(v: Vec2, dlen: f32) -> Vec2 {
+    v.normalize_or_zero() * (v.length() - dlen).max(0.)
 }
 
 /// Тики в секунду

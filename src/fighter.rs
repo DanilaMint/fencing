@@ -1,8 +1,9 @@
 use glam::{Mat2, Vec2};
 
 use crate::{
-    fighter::{brain::Brain, sword::Sword},
-    math::{SPT, TAU, normalize_angle},
+    fighter::{action::Action, brain::Brain, sword::Sword},
+    math::{PI, SPT, TAU, add_vector_with_min, normalize_angle, shorten_vector},
+    round::situation::{self, Situation},
 };
 
 pub mod action;
@@ -27,6 +28,16 @@ pub const SWORD_DY: f32 = 0.5;
 pub const SWORD_POS: Vec2 = Vec2::new(SWORD_DX, SWORD_DY);
 
 pub const ENERGY_RESTORATION_SPEED: f32 = 0.08;
+
+pub const ACCELERATION: f32 = 5.;
+pub const MAX_SPEED: f32 = 3.;
+pub const ACCELERATION_ENERGY: f32 = 0.01;
+pub const FRICTION: f32 = 0.4 * 9.8;
+
+pub const ANGLE_ACCELERATION: f32 = PI;
+pub const MAX_ANGLE_SPEED: f32 = PI * 0.75;
+pub const ANGLE_ACCELERATION_ENERGY: f32 = 0.01;
+pub const ANGLE_FRICTION: f32 = TAU * 0.67;
 
 pub struct Fighter {
     brain: Box<dyn Brain>,
@@ -64,6 +75,40 @@ impl Fighter {
     pub fn tick(&mut self) {
         self.sword.tick();
         self.unshock();
+
+        self.position += self.velocity * SPT;
+        self.facing += self.angle_speed * SPT;
+    }
+
+    pub fn get_actions(&mut self, situation: Situation) -> Option<Action> {
+        if self.shock == 0. {
+            Some(self.brain.get_actions(situation))
+        } else {
+            None
+        }
+    }
+
+    pub fn do_actions(&mut self, action: Action) {
+        let acceleration_vector =
+            Mat2::from_angle(self.facing()) * action.into_vector() * ACCELERATION * SPT;
+
+        if acceleration_vector != Vec2::ZERO {
+            self.velocity = add_vector_with_min(self.velocity, acceleration_vector, MAX_SPEED);
+            self.energy -= acceleration_vector.length() * ACCELERATION_ENERGY;
+        } else {
+            // Трение
+            self.velocity = shorten_vector(self.velocity, FRICTION * SPT);
+        }
+
+        let angle_acceleration = action.rotation() * ANGLE_ACCELERATION * SPT;
+
+        if angle_acceleration != 0. {
+            self.angle_speed = (self.angle_speed + ANGLE_ACCELERATION * SPT).max(MAX_ANGLE_SPEED);
+            self.energy -= angle_acceleration.abs() * ANGLE_ACCELERATION_ENERGY;
+        } else {
+            // Угловое трение
+            self.angle_speed = todo!()
+        }
     }
 
     pub fn rotate(&mut self, alpha: f32) {
