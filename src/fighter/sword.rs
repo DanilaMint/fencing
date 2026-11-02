@@ -156,6 +156,46 @@ impl Sword {
         }
     }
 
+    /// Скорость изменения положения меча в локальной системе координат бойца
+    pub fn local_velocity(&self) -> Vec2 {
+        match self {
+            Stay => Vec2::ZERO,
+            Prick { velocity, .. } => Vec2::new(0., *velocity),
+            Chok {
+                radius,
+                alpha,
+                velocity,
+                angle_velocity,
+            } => {
+                let dir = Vec2::from_angle(*alpha + 90.0f32.to_radians());
+
+                dir * *velocity + dir.perp() * (*radius * *angle_velocity)
+            }
+            Retract { position, .. } => {
+                if *position == Vec2::ZERO {
+                    Vec2::ZERO
+                } else {
+                    -position.normalize() * RETRACT_VELOCITY
+                }
+            }
+        }
+    }
+
+    /// Скорость изменения угла меча (в радианах в секунду)
+    pub fn angle_velocity(&self) -> f32 {
+        match self {
+            Stay | Prick { .. } => 0.,
+            Chok { angle_velocity, .. } => *angle_velocity,
+            Retract { alpha, .. } => {
+                if alpha.abs() <= RETRACT_ANGLE_VELOCITY * SPT {
+                    0.
+                } else {
+                    -alpha.signum() * RETRACT_ANGLE_VELOCITY
+                }
+            }
+        }
+    }
+
     pub fn retract(&mut self) {
         match self {
             Prick { dy, .. } => {

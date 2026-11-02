@@ -80,11 +80,11 @@ mod tests {
         assert_eq!(sqrt_const(10000.), 100.);
         assert_eq!(sqrt_const(2.), SQRT_2);
 
-        assert_eq!(sqrt_const(-2.), f32::NAN);
+        assert!(sqrt_const(-2.).is_nan());
 
         assert_eq!(sqrt_const(0.), 0.);
 
-        assert_eq!(sqrt_const(f32::NAN), f32::NAN);
+        assert!(sqrt_const(f32::NAN).is_nan());
 
         assert_eq!(sqrt_const(f32::INFINITY), f32::INFINITY);
     }

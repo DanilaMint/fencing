@@ -31,11 +31,14 @@ pub const ENERGY_RESTORATION_SPEED: f32 = 0.08;
 pub struct Fighter {
     brain: Box<dyn Brain>,
     sword: Sword,
+    /// Позиция
     position: Vec2,
+    /// Скорость (мировые единицы в секунду)
     velocity: Vec2,
-    /// Направаление взгляда в радианах, идет по часовой стрелке, при нуле направлен вверх
+    /// Направление взгляда в радианах, идет против часовой стрелки, при нуле направлен вверх
     facing: f32,
-    angle_velocity: f32,
+    /// Угловая скорость в радианах в секунду
+    angle_speed: f32,
 
     energy: f32,
     stamina: f32,
@@ -50,7 +53,7 @@ impl Fighter {
             position: Vec2::ZERO,
             facing: 0.,
             velocity: Vec2::ZERO,
-            angle_velocity: 0.,
+            angle_speed: 0.,
 
             energy: 1.,
             stamina: 1.,
