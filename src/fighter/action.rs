@@ -1,7 +1,8 @@
 use glam::Vec2;
+use serde::{Deserialize, Serialize};
 
 #[repr(i8)]
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Direction {
     Positive = 1,
     #[default]
@@ -43,7 +44,7 @@ impl Direction {
     }
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum SwordAction {
     #[default]
     None,
@@ -57,11 +58,17 @@ pub struct Action {
     pub side: Direction,
     pub rotate: Direction,
     pub sword: SwordAction,
+    /// Целевой угол взгляда (стандартный угол, как у `Fighter::facing()`).
+    /// Если задан, боец доворачивает к нему пропорциональным серво
+    /// и команда `rotate` не учитывается
+    pub turn_to: Option<f32>,
 }
 
 impl Action {
+    /// Вектор движения в локальной системе координат бойца:
+    /// `x` — вправо, `y` — вперёд
     pub fn into_vector(&self) -> Vec2 {
-        Vec2::new(self.side.as_f32(), -self.forward.as_f32())
+        Vec2::new(self.side.as_f32(), self.forward.as_f32())
     }
 
     pub fn rotation(&self) -> f32 {

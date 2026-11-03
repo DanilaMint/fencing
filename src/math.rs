@@ -63,7 +63,13 @@ pub const fn square(x: f32) -> f32 {
 pub const fn normalize_angle(mut x: f32) -> f32 {
     x %= TAU;
 
-    if x > PI { x - TAU } else { x }
+    if x > PI {
+        x - TAU
+    } else if x < -PI {
+        x + TAU
+    } else {
+        x
+    }
 }
 
 /// Складывает векторы и сокращает длину
@@ -76,10 +82,21 @@ pub fn shorten_vector(v: Vec2, dlen: f32) -> Vec2 {
     v.normalize_or_zero() * (v.length() - dlen).max(0.)
 }
 
-/// Тики в секунду
+/// Вычитает `d` из модуля `x`
+pub fn step_to_zero(x: f32, d: f32) -> f32 {
+    if x.abs() <= d { 0. } else { x - d * x.signum() }
+}
+
+/// Углы сравниваются с небольшой погрешностью
+#[cfg(test)]
+pub fn approx_eq(a: f32, b: f32) -> bool {
+    (a - b).abs() < 1e-4
+}
+
+/// Количество тиков (шагов симуляции) в секунду
 pub const TPS: u32 = 50;
-/// Секунды в тике
-pub const SPT: f32 = 1. / TPS as f32;
+/// Длительность одного тика симуляции (delta time), секунды
+pub const DT: f32 = 1. / TPS as f32;
 
 #[cfg(test)]
 mod tests {
@@ -98,5 +115,42 @@ mod tests {
         assert!(sqrt_const(f32::NAN).is_nan());
 
         assert_eq!(sqrt_const(f32::INFINITY), f32::INFINITY);
+    }
+
+    #[test]
+    pub fn normalize_angle_test() {
+        assert_eq!(normalize_angle(0.), 0.);
+        assert_eq!(normalize_angle(PI), PI);
+
+        // Положительные углы, большие PI, сворачиваются вниз
+        assert!(approx_eq(normalize_angle(4.), 4. - TAU));
+        assert!(approx_eq(normalize_angle(PI + 0.5), PI + 0.5 - TAU));
+
+        // Отрицательные углы, меньшие -PI, сворачиваются вверх
+        assert!(approx_eq(normalize_angle(-4.), -4. + TAU));
+        assert!(approx_eq(normalize_angle(-PI - 0.5), -PI - 0.5 + TAU));
+
+        // Углы внутри диапазона не меняются
+        assert!(approx_eq(normalize_angle(1.2), 1.2));
+        assert!(approx_eq(normalize_angle(-1.2), -1.2));
+
+        // После нормализации угол всегда лежит в (-PI..PI]
+        for i in -20..20 {
+            let x = i as f32 * 0.73;
+            let n = normalize_angle(x);
+
+            assert!(n > -PI && n <= PI, "{} -> {}", x, n);
+        }
+    }
+
+    #[test]
+    pub fn step_to_zero_test() {
+        assert_eq!(step_to_zero(0.5, 0.2), 0.3);
+        assert_eq!(step_to_zero(-0.5, 0.2), -0.3);
+
+        // Шаг больше модуля обнуляет значение
+        assert_eq!(step_to_zero(0.1, 0.2), 0.);
+        assert_eq!(step_to_zero(-0.1, 0.2), 0.);
+        assert_eq!(step_to_zero(0., 0.2), 0.);
     }
 }
