@@ -29,6 +29,10 @@ pub struct Situation {
     pub enemy_center_distance: f32,
     /// Готов ли меч бойца к удару: клинок в стойке
     pub sword_ready: bool,
+    /// Энергия бойца (0..1)
+    pub energy: f32,
+    /// Выносливость бойца (0..1)
+    pub stamina: f32,
 }
 
 pub fn analyze_situation(subject: &Fighter, object: &Fighter, ring_radius: f32) -> Situation {
@@ -70,6 +74,8 @@ pub fn analyze_situation(subject: &Fighter, object: &Fighter, ring_radius: f32) 
         enemy_angle_velocity,
         enemy_center_distance,
         sword_ready: subject.is_sword_ready(),
+        energy: subject.energy(),
+        stamina: subject.stamina(),
     }
 }
 

@@ -223,22 +223,32 @@ impl Strategist {
     /// Загружает обученный мозг из файла.
     ///
     /// Если файл сохранён для другой модели мозга, выдаётся ошибка:
-    /// молча принимать чужой файл нельзя.
+    /// молча принимать чужой файл нельзя. Метка модели проверяется прежде
+    /// разбора остальных полей, поэтому чужой файл отвергается с понятным
+    /// сообщением, а не с ошибкой разбора.
     pub fn load_brain(path: impl AsRef<Path>) -> io::Result<SavedBrain> {
         let text = std::fs::read_to_string(path)?;
-        let saved: SavedBrain = serde_json::from_str(&text).map_err(data_error)?;
+        let value: serde_json::Value = serde_json::from_str(&text).map_err(data_error)?;
 
-        if saved.model != MODEL_NAME {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "файл сохранён для другой модели мозга: \"{}\", а не \"{}\"",
-                    saved.model, MODEL_NAME
-                ),
-            ));
+        match value.get("model").and_then(serde_json::Value::as_str) {
+            Some(model) if model == MODEL_NAME => {}
+            Some(model) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "файл сохранён для другой модели мозга: \"{model}\", а не \"{MODEL_NAME}\""
+                    ),
+                ));
+            }
+            None => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "в файле нет метки модели мозга",
+                ));
+            }
         }
 
-        Ok(saved)
+        serde_json::from_str(&text).map_err(data_error)
     }
 
     /// Начинает реакцию, подходящую под текущую обстановку

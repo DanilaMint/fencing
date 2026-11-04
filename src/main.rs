@@ -1,8 +1,12 @@
 mod approach;
+mod benchmark;
 mod cli;
+mod club;
 mod collision;
 mod colors;
+mod eugenics;
 mod fighter;
+mod gameloop;
 mod headless;
 mod math;
 mod render;
@@ -10,60 +14,76 @@ mod render;
 mod round;
 mod train;
 
-use macroquad::{miniquad::conf::Platform, prelude::*};
-
-use crate::{
-    cli::Cli,
-    fighter::brain::Brain,
-    math::DT,
-    render::{draw_round, draw_round_result},
-    round::Round,
-};
-
-/// Заголовок окна
-const WINDOW_TITLE: &str = "Fencing";
-/// Ширина окна, пиксели
-const WINDOW_WIDTH: i32 = 1600;
-/// Высота окна, пиксели
-const WINDOW_HEIGHT: i32 = 900;
-
-fn conf() -> Conf {
-    Conf {
-        window_title: String::from(WINDOW_TITLE),
-        window_width: WINDOW_WIDTH,
-        window_height: WINDOW_HEIGHT,
-        window_resizable: true,
-        fullscreen: false,
-        high_dpi: false,
-        icon: None,
-        sample_count: 1,
-        platform: Platform::default(),
-    }
-}
+use crate::cli::{Cli, FightArgs, Mode, SavePerceptronArgs};
 
 fn main() {
     let cli = Cli::parse_args();
 
-    // Обучение клуба бойцов вместо игры
-    if cli.train {
-        if let Err(err) = train::run(&cli) {
-            eprintln!("Ошибка обучения: {err}");
-            std::process::exit(1);
+    match cli.mode {
+        // Бой: окно с поединком либо раунд без окна
+        Mode::Fight(args) => run_fight(&args),
+        // Обучение клуба бойцов
+        Mode::TrainStrategist(args) => {
+            if let Err(err) = train::run(&args) {
+                eprintln!("Ошибка обучения: {err}");
+                std::process::exit(1);
+            }
         }
-
-        return;
+        // Обучение перцептронов: генетический алгоритм
+        Mode::TrainEugenics(args) => {
+            if let Err(err) = eugenics::run(&args) {
+                eprintln!("Ошибка обучения: {err}");
+                std::process::exit(1);
+            }
+        }
+        // Сравнение двух поколений бойцов
+        Mode::Benchmark(args) => {
+            if let Err(err) = benchmark::run(&args) {
+                eprintln!("Ошибка сравнения: {err}");
+                std::process::exit(1);
+            }
+        }
+        // Сохранение мозга на нейросети со случайными весами
+        Mode::SavePerceptron(args) => {
+            if let Err(err) = save_perceptron(&args) {
+                eprintln!("Ошибка: {err}");
+                std::process::exit(1);
+            }
+        }
     }
+}
 
+/// Сохраняет мозг на нейросети со случайными весами.
+///
+/// Нужен, чтобы заполнить файл обученного мозга до того, как появится
+/// обучение: иначе готовой сети взять неоткуда.
+fn save_perceptron(args: &SavePerceptronArgs) -> std::io::Result<()> {
+    let seed = args.seed.unwrap_or_else(|| fastrand::u64(..));
+
+    let brain = fighter::brain::perceptron::Perceptron::random_with_hidden(args.hidden, seed);
+    brain.save_to_file(&args.out, &args.name)?;
+
+    println!(
+        "Мозг сохранён: \"{}\" (зерно {seed}, скрытый слой {})",
+        args.out.display(),
+        args.hidden
+    );
+
+    Ok(())
+}
+
+/// Бой: поединок двух бойцов. Без окна симуляция крутится, отрисовка не выполняется.
+fn run_fight(args: &FightArgs) {
     // Мозги бойцов: без окна игроком управлять нечем, поэтому там
     // такой мозг заменяется заглушкой
-    let red = match cli.red.build(cli.no_gui) {
+    let red = match args.red.build(args.no_gui) {
         Ok(brain) => brain,
         Err(err) => {
             eprintln!("Ошибка: {err}");
             std::process::exit(1);
         }
     };
-    let blue = match cli.blue.build(cli.no_gui) {
+    let blue = match args.blue.build(args.no_gui) {
         Ok(brain) => brain,
         Err(err) => {
             eprintln!("Ошибка: {err}");
@@ -71,44 +91,10 @@ fn main() {
         }
     };
 
-    // Без окна: симуляция крутится, отрисовка не выполняется
-    if cli.no_gui {
+    if args.no_gui {
         headless::run(red, blue);
         return;
     }
 
-    macroquad::Window::from_config(conf(), game_loop(red, blue));
-}
-
-/// Игровой цикл: шаги симуляции и отрисовка
-async fn game_loop(red: Box<dyn Brain>, blue: Box<dyn Brain>) {
-    let mut round = Round::new(red, blue);
-
-    let mut time_delta = 0.0;
-
-    loop {
-        clear_background(BLACK);
-
-        time_delta += get_frame_time();
-
-        while time_delta >= DT {
-            time_delta -= DT;
-            // После окончания раунда tick() ничего не делает: бойцы замирают.
-            // Аккумулятор времени при этом вычитывается, чтобы после рестарта
-            // не было «перемотки» нескольких тиков за один кадр
-            round.tick();
-        }
-
-        draw_round(&round);
-        draw_round_result(&round);
-        draw_fps();
-
-        // Рестарт раунда: мозги бойцов переиспользуются
-        if round.is_finished() && is_key_pressed(KeyCode::Space) {
-            let (red_brain, blue_brain) = round.extract_brains();
-            round = Round::new(red_brain, blue_brain);
-        }
-
-        next_frame().await;
-    }
+    gameloop::run(red, blue);
 }

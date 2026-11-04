@@ -123,6 +123,8 @@ pub struct Fighter {
     shock: f32,
     /// Боец был отправлен в нокаут: выносливость уже опустилась до нуля
     knocked_out: bool,
+    /// Выносливость кончилась от полученного удара, а не от перерасхода энергии
+    knocked_out_by_damage: bool,
 }
 
 impl Fighter {
@@ -139,6 +141,7 @@ impl Fighter {
             stamina: 1.,
             shock: 0.,
             knocked_out: false,
+            knocked_out_by_damage: false,
         }
     }
 
@@ -277,7 +280,7 @@ impl Fighter {
         self.stamina -= damage;
         self.energy = self.energy.min(self.stamina);
         // Выносливость дошла до нуля — нокаут, он необратим
-        self.knocked_out |= self.stamina <= 0.;
+        self.check_knockout(true);
     }
 
     pub fn expend_energy(&mut self, e: f32) {
@@ -287,7 +290,20 @@ impl Fighter {
         self.stamina += self.energy.min(0.);
         self.energy = self.energy.max(0.);
         // Выносливость дошла до нуля — нокаут, он необратим
-        self.knocked_out |= self.stamina <= 0.;
+        self.check_knockout(false);
+    }
+
+    /// Фиксирует нокаут, если выносливость кончилась
+    ///
+    /// Причина запоминается только в первый раз: нокаут необратим, а значит
+    /// и причина, которая его вызвала, уже не может измениться. Поэтому удар,
+    /// прилетевший в том же тике после нокаута от перерасхода энергии, причину
+    /// не переписывает.
+    fn check_knockout(&mut self, by_damage: bool) {
+        if !self.knocked_out && self.stamina <= 0. {
+            self.knocked_out = true;
+            self.knocked_out_by_damage = by_damage;
+        }
     }
 
     pub fn set_position(&mut self, v: Vec2) {
@@ -559,5 +575,59 @@ mod tests {
 
         assert!(f.stamina() > 0., "выносливость должна восстановиться");
         assert!(f.is_knockout(), "нокаут необратим");
+    }
+
+    /// До нокаута причина не задана
+    #[test]
+    fn knockout_cause_is_unknown_before_knockout() {
+        let mut f = fighter();
+
+        f.deal_damage(0.5);
+
+        assert!(!f.is_knockout());
+        assert!(!f.knocked_out_by_damage());
+    }
+
+    /// Нокаут от удара запоминается как нокаут от урона
+    #[test]
+    fn knockout_by_damage_is_remembered() {
+        let mut f = fighter();
+
+        f.deal_damage(1.);
+
+        assert!(f.is_knockout());
+        assert!(f.knocked_out_by_damage(), "выносливость кончилась от урона");
+    }
+
+    /// Нокаут от перерасхода энергии — не от урона
+    #[test]
+    fn knockout_by_energy_is_not_damage() {
+        let mut f = fighter();
+
+        // Энергии 1, а расход 2: перерасход уходит из выносливости
+        f.expend_energy(2.);
+
+        assert!(f.is_knockout());
+        assert!(!f.knocked_out_by_damage(), "выносливость кончилась от энергии");
+    }
+
+    /// Причина нокаута не меняется: удар после нокаута от энергии ничего не переписывает
+    #[test]
+    fn knockout_cause_keeps_first_reason() {
+        let mut f = fighter();
+
+        f.expend_energy(2.);
+        f.deal_damage(1.);
+
+        assert!(f.is_knockout());
+        assert!(!f.knocked_out_by_damage(), "причина осталась прежней");
+
+        let mut g = fighter();
+
+        g.deal_damage(1.);
+        g.expend_energy(2.);
+
+        assert!(g.is_knockout());
+        assert!(g.knocked_out_by_damage(), "причина осталась прежней");
     }
 }

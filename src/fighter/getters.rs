@@ -151,6 +151,13 @@ impl Fighter {
     pub fn is_knockout(&self) -> bool {
         self.knocked_out
     }
+
+    /// Кончилась ли выносливость от полученного удара.
+    /// Имеет смысл только при нокауте: причина нокаута запоминается один раз,
+    /// причём та, что вызвала его первой.
+    pub fn knocked_out_by_damage(&self) -> bool {
+        self.knocked_out_by_damage
+    }
 }
 
 #[cfg(test)]

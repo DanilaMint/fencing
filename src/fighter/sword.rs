@@ -52,7 +52,7 @@ mod chok {
 // ----- Возврат меча после удара
 
 /// Скорость возврата клинка в стойку, мировых единиц в секунду
-pub const RETRACT_SPEED: f32 = 3.;
+pub const RETRACT_SPEED: f32 = 5.;
 
 /// Угловая скорость возврата клинка в стойку, радиан в секунду
 pub const RETRACT_ANGLE_SPEED: f32 = 60_f32.to_radians();

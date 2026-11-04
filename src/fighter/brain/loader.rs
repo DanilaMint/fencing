@@ -1,7 +1,9 @@
 //! Сборка мозга бойца по значению из командной строки.
 //!
-//! Значение флага может быть именем встроенного мозга (`player`, `doll`)
-//! или путём к файлу с обученной таблицей реакций.
+//! Значение флага может быть именем встроенного мозга (`player`, `doll`,
+//! `perceptron`) или путём к файлу с обученным мозгом. В файле сам
+//! объявлено, какой моделью мозга он создан, поэтому по одному пути можно
+//! загрузить и стратега, и сеть.
 
 use std::{
     io,
@@ -9,7 +11,15 @@ use std::{
     str::FromStr,
 };
 
-use super::{Brain, control::PlayerControl, doll::Doll, strategist::Strategist};
+use serde_json::Value;
+
+use super::{
+    Brain,
+    control::PlayerControl,
+    doll::Doll,
+    perceptron::{MODEL_NAME as PERCEPTRON_MODEL, Perceptron},
+    strategist::{MODEL_NAME as STRATEGIST_MODEL, Strategist},
+};
 
 /// Источник мозга бойца
 #[derive(Clone, Debug, PartialEq)]
@@ -18,7 +28,9 @@ pub enum BrainKind {
     Player,
     /// Заглушка: боец ничего не делает
     Doll,
-    /// Обученный стратег, сохранённый в файл
+    /// Мозг на нейросети со случайными весами
+    Perceptron,
+    /// Обученный мозг, сохранённый в файл
     File(PathBuf),
 }
 
@@ -33,6 +45,7 @@ impl FromStr for BrainKind {
         Ok(match value {
             "player" => BrainKind::Player,
             "doll" => BrainKind::Doll,
+            "perceptron" => BrainKind::Perceptron,
             path => BrainKind::File(PathBuf::from(path)),
         })
     }
@@ -41,15 +54,62 @@ impl FromStr for BrainKind {
 impl BrainKind {
     /// Собирает мозга бойца по этому источнику.
     ///
-    /// В режиме без окна управлять бойцом нечем: клавиатура и мышь
+    /// В режиме без окна управлять бойцом нечем: клавиатуры и мыши
     /// там недоступны, поэтому такой мозг заменяется заглушкой.
     pub fn build(&self, headless: bool) -> io::Result<Box<dyn Brain>> {
         match self {
             BrainKind::Player if headless => Ok(Box::new(Doll)),
             BrainKind::Player => Ok(Box::new(PlayerControl)),
             BrainKind::Doll => Ok(Box::new(Doll)),
-            BrainKind::File(path) => Ok(Box::new(load_strategist(path)?)),
+            BrainKind::Perceptron => Ok(Box::new(Perceptron::random(fastrand::u64(..)))),
+            BrainKind::File(path) => Ok(load_brain(path)?),
         }
+    }
+}
+
+/// Загружает обученный мозг из файла.
+///
+/// Модель мозга указана в самом файле: по ней выбирается, чем этот мозг
+/// является — стратегом или сетью.
+///
+/// В ошибке всегда виден путь к файлу: иначе непонятно, какой из двух
+/// мозгов не удалось загрузить.
+pub fn load_brain(path: &Path) -> io::Result<Box<dyn Brain>> {
+    let text = std::fs::read_to_string(path).map_err(|err| {
+        io::Error::new(
+            err.kind(),
+            format!("не удалось прочитать мозг из \"{}\": {err}", path.display()),
+        )
+    })?;
+
+    let value: Value = serde_json::from_str(&text).map_err(|err| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("не удалось разобрать мозг из \"{}\": {err}", path.display()),
+        )
+    })?;
+
+    let model = value.get("model").and_then(Value::as_str).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("в файле \"{}\" нет метки модели мозга", path.display()),
+        )
+    })?;
+
+    match model {
+        STRATEGIST_MODEL => Ok(Box::new(load_strategist(path)?)),
+        PERCEPTRON_MODEL => {
+            let saved = Perceptron::load_brain(path)?;
+
+            Ok(Box::new(Perceptron::from_saved(saved)?))
+        }
+        other => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "неизвестная модель мозга \"{other}\" в файле \"{}\"",
+                path.display()
+            ),
+        )),
     }
 }
 
@@ -101,6 +161,11 @@ mod tests {
     }
 
     #[test]
+    fn perceptron_is_parsed_as_builtin_brain() {
+        assert_eq!("perceptron".parse(), Ok(BrainKind::Perceptron));
+    }
+
+    #[test]
     fn path_is_parsed_as_file() {
         let kind: BrainKind = "firsts/epoch_08/firsts_00.json".parse().unwrap();
 
@@ -118,6 +183,17 @@ mod tests {
     #[test]
     fn dummy_brain_is_built() {
         assert!("doll".parse::<BrainKind>().unwrap().build(false).is_ok());
+    }
+
+    #[test]
+    fn perceptron_brain_is_built() {
+        assert!(
+            "perceptron"
+                .parse::<BrainKind>()
+                .unwrap()
+                .build(false)
+                .is_ok()
+        );
     }
 
     #[test]
@@ -162,6 +238,61 @@ mod tests {
         let err = expect_err(load_strategist(&path));
 
         assert!(err.to_string().contains("doll"), "{err}");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Файл стратега грузится загрузчиком мозгов
+    #[test]
+    fn strategist_file_is_loaded_by_model() {
+        let path = temp_path("strategist-by-model");
+
+        let strategist = Strategist::with_seed(42);
+        strategist.save_to_file(&path, "test").unwrap();
+
+        assert!(load_brain(&path).is_ok());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Файл сети грузится загрузчиком мозгов
+    #[test]
+    fn perceptron_file_is_loaded_by_model() {
+        let path = temp_path("perceptron-by-model");
+
+        let brain = Perceptron::random(7);
+        brain.save_to_file(&path, "test").unwrap();
+
+        assert!(load_brain(&path).is_ok());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Неизвестная модель мозга в файле — понятная ошибка
+    #[test]
+    fn unknown_model_is_reported() {
+        let path = temp_path("unknown-model");
+
+        std::fs::write(&path, r#"{"model":"что-то ещё","version":1}"#).unwrap();
+
+        let err = expect_err(load_brain(&path));
+
+        assert!(err.to_string().contains("что-то ещё"), "{err}");
+        assert!(err.to_string().contains("unknown-model"), "{err}");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Файл без метки модели — понятная ошибка
+    #[test]
+    fn file_without_model_is_reported() {
+        let path = temp_path("no-model");
+
+        std::fs::write(&path, r#"{"version":1}"#).unwrap();
+
+        let err = expect_err(load_brain(&path));
+
+        assert!(err.to_string().contains("метки модели"), "{err}");
 
         let _ = std::fs::remove_file(&path);
     }

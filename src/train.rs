@@ -16,8 +16,7 @@
 use std::{
     cell::RefCell,
     cmp::Ordering,
-    fs,
-    io,
+    fs, io,
     path::{Path, PathBuf},
     rc::Rc,
     sync::{Arc, Mutex},
@@ -29,7 +28,8 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    cli::Cli,
+    cli::TrainStrategistArgs,
+    club::{data_error, find_latest_backup, write_json},
     fighter::{
         action::{Action, Direction, SwordAction},
         brain::{
@@ -47,11 +47,11 @@ use crate::{
 };
 
 /// Имя клуба по умолчанию
-pub const DEFAULT_CLUB: &str = "firsts";
+pub const DEFAULT_CLUB: &str = "club_firsts";
 /// Число бойцов в клубе по умолчанию
 pub const DEFAULT_FIGHTERS: usize = 16;
 /// Число спарингов на пару за эпоху по умолчанию
-pub const DEFAULT_SPARINGS: u32 = 100;
+pub const DEFAULT_SPARINGS: u32 = 100000;
 /// Число эпох обучения по умолчанию
 pub const DEFAULT_EPOCHS: u32 = 8;
 /// Базовое зерно обучения по умолчанию
@@ -262,7 +262,10 @@ impl SparringOutcome {
     fn end_kind(&self) -> EndKind {
         let reasons = [self.red_lose, self.blue_lose];
 
-        if reasons.contains(&Some(LoseReason::Exhausted)) {
+        // Нокаут от удара и нокаут от перерасхода энергии — один исход
+        if reasons.contains(&Some(LoseReason::Exhausted))
+            || reasons.contains(&Some(LoseReason::Defeated))
+        {
             EndKind::Knockout
         } else if reasons.contains(&Some(LoseReason::OutOfRing)) {
             EndKind::OutOfRing
@@ -318,7 +321,10 @@ fn build_waves(tasks: &[SparringTask]) -> Vec<Vec<SparringTask>> {
             busy = 0;
         }
 
-        waves.last_mut().expect("волна только что создана").push(*task);
+        waves
+            .last_mut()
+            .expect("волна только что создана")
+            .push(*task);
         busy |= mask;
     }
 
@@ -425,8 +431,11 @@ fn run_epoch(club: &mut Club, epoch: u32, sparrings_per_pair: u32) -> EpochRepor
     let waves = build_waves(&tasks);
 
     // Копии мьютексов стратегов: потоки rayon работают только с ними
-    let brains: Vec<Arc<Mutex<Strategist>>> =
-        club.fighters.iter().map(|fighter| fighter.brain.clone()).collect();
+    let brains: Vec<Arc<Mutex<Strategist>>> = club
+        .fighters
+        .iter()
+        .map(|fighter| fighter.brain.clone())
+        .collect();
     let base_seed = club.seed;
 
     let mut report = EpochReport {
@@ -473,7 +482,12 @@ fn run_epoch(club: &mut Club, epoch: u32, sparrings_per_pair: u32) -> EpochRepor
         .fighters
         .iter()
         .map(|fighter| {
-            let table = fighter.brain.lock().unwrap_or_else(|err| err.into_inner()).table().clone();
+            let table = fighter
+                .brain
+                .lock()
+                .unwrap_or_else(|err| err.into_inner())
+                .table()
+                .clone();
             let filled = table.filled();
             let sum: f32 = (0..table.len())
                 .filter_map(|index| table.rating(index))
@@ -487,7 +501,11 @@ fn run_epoch(club: &mut Club, epoch: u32, sparrings_per_pair: u32) -> EpochRepor
 
     report.filled = filled;
     report.capacity = capacity;
-    report.avg_rating = if filled > 0 { rating_sum / filled as f32 } else { 0. };
+    report.avg_rating = if filled > 0 {
+        rating_sum / filled as f32
+    } else {
+        0.
+    };
 
     club.epoch_stats.push(report.clone());
 
@@ -548,7 +566,9 @@ fn apply_outcome(club: &mut Club, outcome: &SparringOutcome, report: &mut EpochR
             red.wins += 1;
             blue.losses += 1;
 
-            if outcome.blue_lose == Some(LoseReason::Exhausted) {
+            if outcome.blue_lose == Some(LoseReason::Exhausted)
+                || outcome.blue_lose == Some(LoseReason::Defeated)
+            {
                 red.wins_by_ko += 1;
             }
             if outcome.red_lose == Some(LoseReason::OutOfRing) {
@@ -559,7 +579,9 @@ fn apply_outcome(club: &mut Club, outcome: &SparringOutcome, report: &mut EpochR
             blue.wins += 1;
             red.losses += 1;
 
-            if outcome.red_lose == Some(LoseReason::Exhausted) {
+            if outcome.red_lose == Some(LoseReason::Exhausted)
+                || outcome.red_lose == Some(LoseReason::Defeated)
+            {
                 blue.wins_by_ko += 1;
             }
             if outcome.blue_lose == Some(LoseReason::OutOfRing) {
@@ -646,57 +668,13 @@ fn save_epoch(dir: &Path, epoch: u32, club: &Club) -> io::Result<()> {
             .brain
             .lock()
             .unwrap_or_else(|err| err.into_inner())
-            .save_to_file(epoch_dir.join(format!("{}.json", fighter.name)), &fighter.name)?;
+            .save_to_file(
+                epoch_dir.join(format!("{}.json", fighter.name)),
+                &fighter.name,
+            )?;
     }
 
     Ok(())
-}
-
-/// Пишет JSON во временный файл и переименовывает его:
-/// так прерванная запись не оставит битый бэкап
-fn write_json<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
-    let text = serde_json::to_string_pretty(value).map_err(data_error)?;
-
-    let tmp = path.with_extension("tmp");
-    fs::write(&tmp, text)?;
-    fs::rename(&tmp, path)
-}
-
-/// Ошибка разбора или записи JSON переводится в ошибку ввода-вывода
-fn data_error(err: serde_json::Error) -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData, err)
-}
-
-/// Ищет последний сохранённый бэкап клуба
-fn find_latest_backup(dir: &Path) -> Option<(u32, PathBuf)> {
-    let mut latest: Option<(u32, PathBuf)> = None;
-
-    for entry in fs::read_dir(dir).ok()?.flatten() {
-        let path = entry.path();
-
-        if !path.is_dir() {
-            continue;
-        }
-
-        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-            continue;
-        };
-
-        let Some(number) = name.strip_prefix("epoch_").and_then(|rest| rest.parse::<u32>().ok())
-        else {
-            continue;
-        };
-
-        if !path.join("club.json").exists() {
-            continue;
-        }
-
-        if latest.as_ref().is_none_or(|(best, _)| number > *best) {
-            latest = Some((number, path.join("club.json")));
-        }
-    }
-
-    latest
 }
 
 /// Загружает клуб из бэкапа
@@ -722,7 +700,11 @@ fn club_from_backup(backup: ClubBackup) -> Club {
         })
         .collect();
 
-    let stats = backup.fighters.iter().map(|fighter| fighter.stats.clone()).collect();
+    let stats = backup
+        .fighters
+        .iter()
+        .map(|fighter| fighter.stats.clone())
+        .collect();
 
     Club {
         name: backup.name,
@@ -825,13 +807,11 @@ fn describe_reaction(reaction: &Reaction) -> String {
 
 /// Лучшие записи таблицы бойца
 fn best_entries(table: &Table, count: usize) -> Vec<&Entry> {
-    let mut entries: Vec<&Entry> = (0..table.len()).filter_map(|index| table.entry(index)).collect();
+    let mut entries: Vec<&Entry> = (0..table.len())
+        .filter_map(|index| table.entry(index))
+        .collect();
 
-    entries.sort_by(|a, b| {
-        b.rating
-            .partial_cmp(&a.rating)
-            .unwrap_or(Ordering::Equal)
-    });
+    entries.sort_by(|a, b| b.rating.partial_cmp(&a.rating).unwrap_or(Ordering::Equal));
 
     entries.truncate(count);
     entries
@@ -1001,10 +981,7 @@ fn write_report(dir: &Path, club: &Club) -> io::Result<()> {
     if empty.is_empty() {
         text.push_str("- все бойцы участвовали в ударах: сигнал для обучения есть\n");
     } else {
-        text.push_str(&format!(
-            "- без ударов остались: {}\n",
-            empty.join(", ")
-        ));
+        text.push_str(&format!("- без ударов остались: {}\n", empty.join(", ")));
     }
 
     let degenerate: Vec<&str> = club
@@ -1060,9 +1037,9 @@ fn hits_per_fight(report: &EpochReport) -> f32 {
 // ----- Запуск -----
 
 /// Запускает обучение клуба бойцов
-pub fn run(cli: &Cli) -> io::Result<()> {
+pub fn run(args: &TrainStrategistArgs) -> io::Result<()> {
     // Каталог клуба: внутри — папки эпох, бэкапы и отчёт
-    let dir = PathBuf::from(&cli.train_out);
+    let dir = PathBuf::from(&args.out);
     fs::create_dir_all(&dir)?;
 
     // Возобновление: если последняя эпоха уже сохранена, продолжаем с неё
@@ -1071,20 +1048,17 @@ pub fn run(cli: &Cli) -> io::Result<()> {
             println!("Продолжаем обучение с {}", path.display());
             (club_from_backup(load_backup(&path)?), done + 1)
         }
-        None => (
-            build_club(&cli.club, cli.train_fighters, cli.train_seed),
-            1,
-        ),
+        None => (build_club(&args.club, args.fighters, args.seed), 1),
     };
 
-    while epoch <= cli.train_epochs {
+    while epoch <= args.epochs {
         println!(
             "===== Клуб \"{}\" | эпоха {}/{} =====",
-            club.name, epoch, cli.train_epochs
+            club.name, epoch, args.epochs
         );
 
-        let report = run_epoch(&mut club, epoch, cli.train_sparring);
-        print_epoch(&club, &report, cli.train_epochs);
+        let report = run_epoch(&mut club, epoch, args.sparring);
+        print_epoch(&club, &report, args.epochs);
 
         save_epoch(&dir, epoch, &club)?;
 

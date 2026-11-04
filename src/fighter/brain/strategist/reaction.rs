@@ -13,70 +13,16 @@ use crate::{
     math::TPS,
 };
 
+/// Направление движения живёт рядом с командой бойца: им пользуются и стратег,
+/// и сеть-перцептрон
+pub use crate::fighter::action::MoveDir8;
+
 /// Число этапов в одной реакции
 pub const REACTION_STAGES: usize = 8;
 
 /// Максимальная длительность команды в тиках: 25 тиков — это полсекунды при
 /// частоте симуляции 50 тиков в секунду
 pub const MAX_STAGE_TICKS: u32 = 25;
-
-/// Направление движения: восемь направлений в локальной системе координат бойца.
-///
-/// Это ровно все ненулевые комбинации `forward` и `side` из `{-1, 0, 1}`,
-/// поэтому каждое направление раскладывается в поля команды `Action`.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub enum MoveDir8 {
-    /// Только вперёд
-    Forward,
-    /// Только назад
-    Back,
-    /// Только влево
-    Left,
-    /// Только вправо
-    Right,
-    /// Вперёд и влево
-    ForwardLeft,
-    /// Вперёд и вправо
-    ForwardRight,
-    /// Назад и влево
-    BackLeft,
-    /// Назад и вправо
-    BackRight,
-}
-
-impl MoveDir8 {
-    /// Все восемь направлений
-    pub const ALL: [MoveDir8; 8] = [
-        MoveDir8::Forward,
-        MoveDir8::Back,
-        MoveDir8::Left,
-        MoveDir8::Right,
-        MoveDir8::ForwardLeft,
-        MoveDir8::ForwardRight,
-        MoveDir8::BackLeft,
-        MoveDir8::BackRight,
-    ];
-
-    /// Составляющая «вперёд или назад»
-    pub fn forward(self) -> Direction {
-        match self {
-            MoveDir8::Forward | MoveDir8::ForwardLeft | MoveDir8::ForwardRight => {
-                Direction::Positive
-            }
-            MoveDir8::Back | MoveDir8::BackLeft | MoveDir8::BackRight => Direction::Negative,
-            MoveDir8::Left | MoveDir8::Right => Direction::Zero,
-        }
-    }
-
-    /// Составляющая «вправо или влево»
-    pub fn side(self) -> Direction {
-        match self {
-            MoveDir8::Right | MoveDir8::ForwardRight | MoveDir8::BackRight => Direction::Positive,
-            MoveDir8::Left | MoveDir8::ForwardLeft | MoveDir8::BackLeft => Direction::Negative,
-            MoveDir8::Forward | MoveDir8::Back => Direction::Zero,
-        }
-    }
-}
 
 /// Переводит длительность из секунд в тики: 0.4 секунды — это 20 тиков.
 /// Значение округляется и зажимается в пределах `MAX_STAGE_TICKS`.

@@ -6,18 +6,18 @@ use glam::Vec2;
 use crate::{
     collision::resolve_collisions,
     fighter::{Fighter, brain::Brain},
-    math::{DT, FRAC_PI_2, PI, TPS},
+    math::{DT, FRAC_PI_2, TPS},
     round::situation::analyze_situation,
 };
 
 /// Радиус ринга, мировые единицы
-pub const RING_RADIUS: f32 = 10.0;
+pub const RING_RADIUS: f32 = 6.0;
 /// Начальное смещение бойца от центра ринга по оси X, мировые единицы
-pub const INITIAL_POSITION_X: f32 = 6.0;
+pub const INITIAL_POSITION_X: f32 = 2.0;
 /// Максимальный разброс начальной позиции по оси Y, мировые единицы
-pub const INITIAL_POSITION_SPREAD_Y: f32 = 2.5;
+pub const INITIAL_POSITION_SPREAD_Y: f32 = 0.5;
 /// Максимальный разброс начального направления взгляда, градусы
-pub const INITIAL_FACING_JITTER: f32 = 30.0;
+pub const INITIAL_FACING_JITTER: f32 = 20.0;
 
 /// Длительность раунда, секунды
 pub const ROUND_DURATION: f32 = 120.;
@@ -30,8 +30,10 @@ pub const ROUND_DURATION_TICKS: u32 = (ROUND_DURATION * TPS as f32) as u32;
 pub enum LoseReason {
     /// Боец вышел за пределы ринга
     OutOfRing,
-    /// Боец отправлен в нокаут: выносливость опустилась до нуля
+    /// Боец отправлен в нокаут: выносливость опустилась до нуля от перерасхода энергии
     Exhausted,
+    /// Боец отправлен в нокаут: выносливость опустилась до нуля от полученного удара
+    Defeated,
 }
 
 /// Результат раунда
@@ -176,9 +178,15 @@ impl Round {
             return Some(LoseReason::OutOfRing);
         }
 
-        // Нокаут: выносливость опустилась до нуля
+        // Нокаут: выносливость опустилась до нуля.
+        // Если выносливость кончилась от удара — это победа за счёт удара,
+        // а не от собственной нерасторопности
         if fighter.is_knockout() {
-            return Some(LoseReason::Exhausted);
+            return Some(if fighter.knocked_out_by_damage() {
+                LoseReason::Defeated
+            } else {
+                LoseReason::Exhausted
+            });
         }
 
         None
@@ -243,7 +251,7 @@ mod tests {
         fighter::{
             Fighter,
             action::{Action, Direction, SwordAction},
-            brain::{Brain, doll::Doll, strategist::Strategist},
+            brain::{Brain, doll::Doll, perceptron::Perceptron, strategist::Strategist},
         },
         math::PI,
         round::situation::Situation,
@@ -388,6 +396,20 @@ mod tests {
         round.tick();
 
         assert_eq!(round.result(), Some(RoundResult::BlueWin));
+        assert_eq!(round.red_lose_reason(), Some(LoseReason::Defeated));
+        assert_eq!(round.blue_lose_reason(), None);
+    }
+
+    /// Боец, вымотавшийся без урона, проигрывает по истощению
+    #[test]
+    fn exhausted_fighter_loses() {
+        let mut round = idle_round(5.);
+        // Перерасход энергии уходит из выносливости
+        round.red.expend_energy(2.);
+
+        round.tick();
+
+        assert_eq!(round.result(), Some(RoundResult::BlueWin));
         assert_eq!(round.red_lose_reason(), Some(LoseReason::Exhausted));
         assert_eq!(round.blue_lose_reason(), None);
     }
@@ -416,8 +438,8 @@ mod tests {
         round.tick();
 
         assert_eq!(round.result(), Some(RoundResult::Draw));
-        assert_eq!(round.red_lose_reason(), Some(LoseReason::Exhausted));
-        assert_eq!(round.blue_lose_reason(), Some(LoseReason::Exhausted));
+        assert_eq!(round.red_lose_reason(), Some(LoseReason::Defeated));
+        assert_eq!(round.blue_lose_reason(), Some(LoseReason::Defeated));
     }
 
     /// Один боец вышел из ринга, другой получил нокаут — ничья
@@ -431,7 +453,7 @@ mod tests {
 
         assert_eq!(round.result(), Some(RoundResult::Draw));
         assert_eq!(round.red_lose_reason(), Some(LoseReason::OutOfRing));
-        assert_eq!(round.blue_lose_reason(), Some(LoseReason::Exhausted));
+        assert_eq!(round.blue_lose_reason(), Some(LoseReason::Defeated));
     }
 
     /// По истечении времени раунда объявляется ничья
@@ -555,6 +577,23 @@ mod tests {
         assert!(
             round.red.position() != start,
             "стратег должен двигать бойца"
+        );
+    }
+
+    /// Сеть двигает бойца: её команды доходят до тела
+    #[test]
+    fn perceptron_moves_fighter() {
+        let mut round = round_with(Box::new(Perceptron::random(11)), Box::new(Doll));
+
+        let start = round.red.position();
+
+        for _ in 0..1000 {
+            round.tick();
+        }
+
+        assert!(
+            round.red.position() != start,
+            "перцептрон должен двигать бойца"
         );
     }
 }

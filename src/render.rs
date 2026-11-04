@@ -245,9 +245,11 @@ fn lose_reason_text(
         // Проиграл красный
         (Some(LoseReason::OutOfRing), None) => "RED LEFT THE RING",
         (Some(LoseReason::Exhausted), None) => "RED IS EXHAUSTED",
+        (Some(LoseReason::Defeated), None) => "RED IS DEFEATED",
         // Проиграл синий
         (None, Some(LoseReason::OutOfRing)) => "BLUE LEFT THE RING",
         (None, Some(LoseReason::Exhausted)) => "BLUE IS EXHAUSTED",
+        (None, Some(LoseReason::Defeated)) => "BLUE IS DEFEATED",
         // Никто не проиграл: истекло время
         (None, None) => "TIME IS UP",
     }
