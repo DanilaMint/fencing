@@ -59,29 +59,43 @@ pub const RETRACT_ANGLE_SPEED: f32 = 60_f32.to_radians();
 
 #[derive(Clone, PartialEq, Default)]
 pub enum Sword {
+    /// Стоит ровно, готов нанести удар
     #[default]
     Stay,
+    /// В процессе нанесения колющего удара
     Prick {
+        /// Смещение меча
         dy: f32,
+        /// Скорость смещения
         velocity: f32,
     },
+    /// В процессе нанесения рубящего удара
     Chok {
+        /// Смещение меча от условного центра руки
         radius: f32,
+        /// Разворот от базового положения
         alpha: f32,
+        /// Скорость удлинения `radius`
         velocity: f32,
+        /// Угловая скорость
         angle_velocity: f32,
     },
+    /// Отходит к положению `Stay`
     Retract {
+        /// Разворот от базового положения
         alpha: f32,
+        /// Позиция смещения рукояти
         position: Vec2,
     },
 }
 
 impl Sword {
+    /// Создать новый меч в состоянии Stay, аналогично `Sword::default()`
     pub fn new() -> Self {
         Stay
     }
 
+    /// Просчитать изменения, которые произойдут в текущем такте симуляции
     pub fn tick(&mut self) {
         match self {
             Stay => {}
@@ -136,6 +150,7 @@ impl Sword {
         }
     }
 
+    /// Угол наклона от базовой позиции
     pub fn angle(&self) -> f32 {
         match self {
             Stay => 0.,
@@ -185,6 +200,7 @@ impl Sword {
         }
     }
 
+    /// Переключить меч в режим `Sword::Retract` из состояния удара
     pub fn retract(&mut self) {
         match self {
             Prick { dy, .. } => {
@@ -207,6 +223,7 @@ impl Sword {
         }
     }
 
+    /// Нанести колющий удар, если меч готов
     pub fn prick(&mut self) {
         match self {
             Stay => {
@@ -219,6 +236,7 @@ impl Sword {
         }
     }
 
+    /// Нанести рубящий удар, если меч готов
     pub fn chok(&mut self) {
         match self {
             Stay => {
@@ -233,6 +251,7 @@ impl Sword {
         }
     }
 
+    /// Готов ли меч нанести удар
     pub fn is_ready(&self) -> bool {
         match self {
             Stay => true,
