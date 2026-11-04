@@ -1,0 +1,12 @@
+[package]
+name = "fencing-eugenics"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+fencing-core = { path = "../core" }
+fencing-perceptron = { path = "../perceptron" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+fastrand = "2"
+rayon = "1"

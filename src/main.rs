@@ -1,18 +1,5 @@
-mod approach;
-mod benchmark;
 mod cli;
-mod club;
-mod collision;
-mod colors;
-mod eugenics;
-mod fighter;
-mod gameloop;
-mod headless;
-mod math;
-mod render;
-#[allow(dead_code)]
-mod round;
-mod train;
+mod loader;
 
 use crate::cli::{Cli, FightArgs, Mode, SavePerceptronArgs};
 
@@ -24,21 +11,49 @@ fn main() {
         Mode::Fight(args) => run_fight(&args),
         // Обучение клуба бойцов
         Mode::TrainStrategist(args) => {
-            if let Err(err) = train::run(&args) {
+            let config = fencing_strategist::train::TrainConfig {
+                club: args.club,
+                fighters: args.fighters,
+                epochs: args.epochs,
+                sparring: args.sparring,
+                seed: args.seed,
+                out: args.out,
+            };
+
+            if let Err(err) = fencing_strategist::train::run(&config) {
                 eprintln!("Ошибка обучения: {err}");
                 std::process::exit(1);
             }
         }
         // Обучение перцептронов: генетический алгоритм
         Mode::TrainEugenics(args) => {
-            if let Err(err) = eugenics::run(&args) {
+            let config = fencing_eugenics::TrainConfig {
+                club: args.club,
+                elite: args.elite,
+                offspring: args.offspring,
+                generations: args.generations,
+                repeat: args.repeat,
+                hidden: args.hidden,
+                mutation_rate: args.mutation_rate,
+                mutation_scale: args.mutation_scale,
+                crossover_rate: args.crossover_rate,
+                tournament: args.tournament,
+                scoring: args.scoring,
+                benchmark_repeat: args.benchmark_repeat,
+                seed: args.seed,
+                out: args.out,
+            };
+
+            if let Err(err) = fencing_eugenics::run(&config) {
                 eprintln!("Ошибка обучения: {err}");
                 std::process::exit(1);
             }
         }
         // Сравнение двух поколений бойцов
         Mode::Benchmark(args) => {
-            if let Err(err) = benchmark::run(&args) {
+            if let Err(err) =
+                fencing_eugenics::benchmark::run(&args.first, &args.second, args.repeat, args.scoring)
+            {
                 eprintln!("Ошибка сравнения: {err}");
                 std::process::exit(1);
             }
@@ -60,7 +75,7 @@ fn main() {
 fn save_perceptron(args: &SavePerceptronArgs) -> std::io::Result<()> {
     let seed = args.seed.unwrap_or_else(|| fastrand::u64(..));
 
-    let brain = fighter::brain::perceptron::Perceptron::random_with_hidden(args.hidden, seed);
+    let brain = fencing_perceptron::Perceptron::random_with_hidden(args.hidden, seed);
     brain.save_to_file(&args.out, &args.name)?;
 
     println!(
@@ -92,9 +107,9 @@ fn run_fight(args: &FightArgs) {
     };
 
     if args.no_gui {
-        headless::run(red, blue);
+        fencing_engine::headless::run(red, blue);
         return;
     }
 
-    gameloop::run(red, blue);
+    fencing_engine::gameloop::run(red, blue);
 }

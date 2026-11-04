@@ -1,16 +1,36 @@
+[workspace]
+members = [
+    "crates/core",
+    "crates/engine",
+    "crates/perceptron",
+    "crates/strategist",
+    "crates/eugenics",
+]
+# Без этого `cargo test` проверял бы только корневой крейт:
+# список участников по умолчанию включает все крейты рабочего пространства
+default-members = [
+    ".",
+    "crates/core",
+    "crates/engine",
+    "crates/perceptron",
+    "crates/strategist",
+    "crates/eugenics",
+]
+
 [package]
 name = "fencing"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-glam = "0.27"
-macroquad = "0.4"
-rayon = "1"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-fastrand = "2"
 clap = { version = "4.6.7", features = ["derive"] }
+fastrand = "2"
+serde_json = "1"
+fencing-core = { path = "crates/core" }
+fencing-engine = { path = "crates/engine" }
+fencing-perceptron = { path = "crates/perceptron" }
+fencing-strategist = { path = "crates/strategist" }
+fencing-eugenics = { path = "crates/eugenics" }
 
 [profile.release]
 # Максимальная оптимизация кода

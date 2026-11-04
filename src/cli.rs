@@ -2,10 +2,10 @@ use std::{ffi::OsString, path::PathBuf};
 
 use clap::{Args, Parser, Subcommand};
 
-use crate::{
-    eugenics::scoring::Scoring,
-    fighter::brain::loader::BrainKind,
-};
+use fencing_eugenics::scoring::Scoring;
+use fencing_perceptron::net::DEFAULT_HIDDEN;
+
+use crate::loader::BrainKind;
 
 /// Аргументы командной строки
 #[derive(Parser, Debug)]
@@ -82,7 +82,7 @@ pub struct SavePerceptronArgs {
     pub seed: Option<u64>,
 
     /// Ширина скрытого слоя сети
-    #[arg(long = "hidden", default_value_t = crate::fighter::brain::perceptron::net::DEFAULT_HIDDEN)]
+    #[arg(long = "hidden", default_value_t = DEFAULT_HIDDEN)]
     pub hidden: usize,
 
     /// Имя бойца, записываемое в файл
@@ -94,22 +94,22 @@ pub struct SavePerceptronArgs {
 #[derive(Args, Debug)]
 pub struct TrainStrategistArgs {
     /// Имя клуба для обучения
-    #[arg(long = "club", default_value = crate::train::DEFAULT_CLUB)]
+    #[arg(long = "club", default_value = fencing_strategist::train::DEFAULT_CLUB)]
     pub club: String,
     /// Число бойцов в клубе
-    #[arg(long = "fighters", default_value_t = crate::train::DEFAULT_FIGHTERS)]
+    #[arg(long = "fighters", default_value_t = fencing_strategist::train::DEFAULT_FIGHTERS)]
     pub fighters: usize,
     /// Число эпох обучения
-    #[arg(long = "epochs", default_value_t = crate::train::DEFAULT_EPOCHS)]
+    #[arg(long = "epochs", default_value_t = fencing_strategist::train::DEFAULT_EPOCHS)]
     pub epochs: u32,
     /// Число спарингов на пару за эпоху
-    #[arg(long = "sparring", default_value_t = crate::train::DEFAULT_SPARINGS)]
+    #[arg(long = "sparring", default_value_t = fencing_strategist::train::DEFAULT_SPARINGS)]
     pub sparring: u32,
     /// Базовое зерно обучения: одинаковое зерно — одинаковый прогон
-    #[arg(long = "seed", default_value_t = crate::train::DEFAULT_SEED)]
+    #[arg(long = "seed", default_value_t = fencing_strategist::train::DEFAULT_SEED)]
     pub seed: u64,
     /// Каталог, куда складываются бэкапы и отчёт обучения
-    #[arg(long = "out", default_value = crate::train::DEFAULT_CLUB)]
+    #[arg(long = "out", default_value = fencing_strategist::train::DEFAULT_CLUB)]
     pub out: String,
 }
 
@@ -117,22 +117,22 @@ pub struct TrainStrategistArgs {
 #[derive(Args, Debug)]
 pub struct TrainEugenicsArgs {
     /// Имя клуба для обучения
-    #[arg(long = "club", default_value = crate::eugenics::DEFAULT_CLUB)]
+    #[arg(long = "club", default_value = fencing_eugenics::DEFAULT_CLUB)]
     pub club: String,
     /// Число бойцов в элите: они переходят в следующее поколение
-    #[arg(long = "elite", default_value_t = crate::eugenics::DEFAULT_ELITE)]
+    #[arg(long = "elite", default_value_t = fencing_eugenics::DEFAULT_ELITE)]
     pub elite: usize,
     /// Число наследников за поколение
-    #[arg(long = "offspring", default_value_t = crate::eugenics::DEFAULT_OFFSPRING)]
+    #[arg(long = "offspring", default_value_t = fencing_eugenics::DEFAULT_OFFSPRING)]
     pub offspring: usize,
     /// Число поколений обучения
-    #[arg(long = "generations", default_value_t = crate::eugenics::DEFAULT_GENERATIONS)]
+    #[arg(long = "generations", default_value_t = fencing_eugenics::DEFAULT_GENERATIONS)]
     pub generations: u32,
     /// Число боёв на пару за поколение
-    #[arg(long = "repeat", default_value_t = crate::eugenics::DEFAULT_REPEAT)]
+    #[arg(long = "repeat", default_value_t = fencing_eugenics::DEFAULT_REPEAT)]
     pub repeat: u32,
     /// Ширина скрытого слоя сети
-    #[arg(long = "hidden", default_value_t = crate::fighter::brain::perceptron::net::DEFAULT_HIDDEN)]
+    #[arg(long = "hidden", default_value_t = DEFAULT_HIDDEN)]
     pub hidden: usize,
     /// Вероятность мутации одного гена
     #[arg(long = "mutation-rate", default_value_t = 0.05)]
@@ -156,11 +156,12 @@ pub struct TrainEugenicsArgs {
     #[arg(long = "seed", default_value_t = 20240101)]
     pub seed: u64,
     /// Каталог, куда складываются бэкапы и отчёт обучения
-    #[arg(long = "out", default_value = crate::eugenics::DEFAULT_CLUB)]
+    #[arg(long = "out", default_value = fencing_eugenics::DEFAULT_CLUB)]
     pub out: String,
 }
 
-impl Cli {    /// Разбирает аргументы командной строки.
+impl Cli {
+    /// Разбирает аргументы командной строки.
     ///
     /// Clap различает короткие (`-n`) и длинные (`--no-gui`) опции,
     /// поэтому аргументы вида `-слово` приводятся к виду `--слово`:
@@ -353,12 +354,12 @@ mod tests {
             panic!("ожидался режим обучения стратегов");
         };
 
-        assert_eq!(args.club, crate::train::DEFAULT_CLUB);
-        assert_eq!(args.fighters, crate::train::DEFAULT_FIGHTERS);
-        assert_eq!(args.epochs, crate::train::DEFAULT_EPOCHS);
-        assert_eq!(args.sparring, crate::train::DEFAULT_SPARINGS);
-        assert_eq!(args.seed, crate::train::DEFAULT_SEED);
-        assert_eq!(args.out, crate::train::DEFAULT_CLUB);
+        assert_eq!(args.club, fencing_strategist::train::DEFAULT_CLUB);
+        assert_eq!(args.fighters, fencing_strategist::train::DEFAULT_FIGHTERS);
+        assert_eq!(args.epochs, fencing_strategist::train::DEFAULT_EPOCHS);
+        assert_eq!(args.sparring, fencing_strategist::train::DEFAULT_SPARINGS);
+        assert_eq!(args.seed, fencing_strategist::train::DEFAULT_SEED);
+        assert_eq!(args.out, fencing_strategist::train::DEFAULT_CLUB);
     }
 
     /// Режим генетического обучения принимает свои опции
@@ -409,13 +410,13 @@ mod tests {
             panic!("ожидался режим генетического обучения");
         };
 
-        assert_eq!(args.club, crate::eugenics::DEFAULT_CLUB);
-        assert_eq!(args.elite, crate::eugenics::DEFAULT_ELITE);
-        assert_eq!(args.offspring, crate::eugenics::DEFAULT_OFFSPRING);
-        assert_eq!(args.generations, crate::eugenics::DEFAULT_GENERATIONS);
-        assert_eq!(args.repeat, crate::eugenics::DEFAULT_REPEAT);
+        assert_eq!(args.club, fencing_eugenics::DEFAULT_CLUB);
+        assert_eq!(args.elite, fencing_eugenics::DEFAULT_ELITE);
+        assert_eq!(args.offspring, fencing_eugenics::DEFAULT_OFFSPRING);
+        assert_eq!(args.generations, fencing_eugenics::DEFAULT_GENERATIONS);
+        assert_eq!(args.repeat, fencing_eugenics::DEFAULT_REPEAT);
         assert_eq!(args.hidden, 16);
         assert_eq!(args.seed, 20240101);
-        assert_eq!(args.out, crate::eugenics::DEFAULT_CLUB);
+        assert_eq!(args.out, fencing_eugenics::DEFAULT_CLUB);
     }
 }
